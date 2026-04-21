@@ -35,7 +35,7 @@ public class SSH {
         try execution(ssh)
     }
     
-    let session: Session
+    public let session: Session
     private let sock: Socket
     
     public var ptyType: PtyType? = nil
