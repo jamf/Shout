@@ -10,8 +10,8 @@ import CSSH
 import Socket
 
 /// Direct bindings to libssh2_session
-class Session {
-    
+public class Session {
+
     private static let initResult = libssh2_init(0)
     
     private let cSession: OpaquePointer
@@ -83,7 +83,11 @@ class Session {
         agent = newAgent
         return newAgent
     }
-    
+
+    public func setTimeout(milliseconds: Int) {
+        libssh2_session_set_timeout(cSession, milliseconds)
+    }
+
     deinit {
         libssh2_session_free(cSession)
     }
