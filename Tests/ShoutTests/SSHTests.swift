@@ -40,13 +40,42 @@ class ShoutTests: XCTestCase {
     func testSendFile() throws {
         try SSH.connect(host: ShoutServer.host, username: ShoutServer.username, authMethod: ShoutServer.authMethod) { (ssh) in
             try ssh.sendFile(localURL: URL(fileURLWithPath: String(#file)), remotePath: "/tmp/shout_upload_test.swift")
-            
+
             let (status, contents) = try ssh.capture("cat /tmp/shout_upload_test.swift")
             XCTAssertEqual(status, 0)
             XCTAssertEqual(contents.components(separatedBy: "\n")[1], "// SSHTests.swift")
-            
+
             XCTAssertEqual(try ssh.execute("rm /tmp/shout_upload_test.swift", silent: false), 0)
         }
+    }
+
+    func testCaptureWithStderr() throws {
+        let ssh = try SSH(host: ShoutServer.host)
+        try ssh.authenticate(username: ShoutServer.username, authMethod: ShoutServer.authMethod)
+
+        // Command that outputs to both stdout and stderr
+        let (status, stdout, stderr) = try ssh.captureWithStderr("echo 'stdout message' && echo 'stderr message' >&2")
+        XCTAssertEqual(status, 0)
+        XCTAssertTrue(stdout.contains("stdout message"))
+        XCTAssertTrue(stderr.contains("stderr message"))
+    }
+
+    func testExecuteWithStderr() throws {
+        let ssh = try SSH(host: ShoutServer.host)
+        try ssh.authenticate(username: ShoutServer.username, authMethod: ShoutServer.authMethod)
+
+        var stdoutOutput = ""
+        var stderrOutput = ""
+
+        let status = try ssh.executeWithStderr("echo 'to stdout' && echo 'to stderr' >&2", stdout: { output in
+            stdoutOutput += output
+        }, stderr: { output in
+            stderrOutput += output
+        })
+
+        XCTAssertEqual(status, 0)
+        XCTAssertTrue(stdoutOutput.contains("to stdout"))
+        XCTAssertTrue(stderrOutput.contains("to stderr"))
     }
 
 }

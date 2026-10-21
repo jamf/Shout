@@ -84,10 +84,26 @@ session.authenticateByAgent(username: "user")
 
 ### Executing commands
 
-You can remotely execute a command one of two ways. `session.execute` will print the output of the command to stdout and return the status of the command, while `session.capture` will not print anything to stdout and will return both the status and the output of the command as a string.
+You can remotely execute a command in several ways:
+
+- `session.execute` will print the output of the command to stdout and return the status of the command
+- `session.capture` will not print anything to stdout and will return both the status and the output of the command as a string
+- `session.captureWithStderr` will return the status, stdout output, and stderr output separately
+- `session.executeWithStderr` allows you to provide separate handlers for stdout and stderr streams
+
 ```swift
 let status = try session.execute("ls -a")
 let (status, output) = try session.capture("pwd")
+
+// Capture stdout and stderr separately
+let (status, stdout, stderr) = try session.captureWithStderr("echo 'output' && echo 'error' >&2")
+
+// Handle stdout and stderr with custom handlers
+let status = try session.executeWithStderr("command", stdout: { output in
+    print("STDOUT: \(output)")
+}, stderr: { output in
+    print("STDERR: \(output)")
+})
 ```
 
 ### Send files

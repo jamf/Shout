@@ -127,6 +127,22 @@ public class SSH {
         }
         return (status, ongoing)
     }
+
+    /// Execute a command on the remote server and capture both stdout and stderr
+    ///
+    /// - Parameter command: the command to execute
+    /// - Returns: a tuple with the exit code, stdout output, and stderr output
+    /// - Throws: SSHError if the command couldn't be executed
+    public func captureWithStderr(_ command: String) throws -> (status: Int32, stdout: String, stderr: String) {
+        var stdout = ""
+        var stderr = ""
+        let status = try executeWithStderr(command, stdout: { output in
+            stdout += output
+        }, stderr: { output in
+            stderr += output
+        })
+        return (status, stdout, stderr)
+    }
     
     /// Execute a command on the remote server
     ///
@@ -137,13 +153,13 @@ public class SSH {
     /// - Throws: SSHError if the command couldn't be executed
     public func execute(_ command: String, output: ((_ output: String) -> ())) throws -> Int32 {
         let channel = try session.openCommandChannel()
-        
+
         if let ptyType = ptyType {
             try channel.requestPty(type: ptyType.rawValue)
         }
-        
+
         try channel.exec(command: command)
-        
+
         var dataLeft = true
         while dataLeft {
             switch channel.readData() {
@@ -160,9 +176,70 @@ public class SSH {
                 throw error
             }
         }
-        
+
         try channel.close()
-        
+
+        return channel.exitStatus()
+    }
+
+    /// Execute a command on the remote server with separate handlers for stdout and stderr
+    ///
+    /// - Parameters:
+    ///   - command: the command to execute
+    ///   - stdout: block handler called every time a chunk of stdout is received
+    ///   - stderr: block handler called every time a chunk of stderr is received
+    /// - Returns: exit code of the command
+    /// - Throws: SSHError if the command couldn't be executed
+    public func executeWithStderr(_ command: String, stdout: ((_ output: String) -> ()), stderr: ((_ output: String) -> ())) throws -> Int32 {
+        let channel = try session.openCommandChannel()
+
+        if let ptyType = ptyType {
+            try channel.requestPty(type: ptyType.rawValue)
+        }
+
+        try channel.exec(command: command)
+
+        var stdoutDataLeft = true
+        var stderrDataLeft = true
+
+        while stdoutDataLeft || stderrDataLeft {
+            // Read stdout
+            if stdoutDataLeft {
+                switch channel.readData() {
+                case .data(let data):
+                    guard let str = String(data: data, encoding: .utf8) else {
+                        throw SSHError.genericError("SSH failed to create string using UTF8 encoding")
+                    }
+                    stdout(str)
+                case .done:
+                    stdoutDataLeft = false
+                case .eagain:
+                    break
+                case .error(let error):
+                    throw error
+                }
+            }
+
+            // Read stderr
+            if stderrDataLeft {
+                switch channel.readStderrData() {
+                case .data(let data):
+                    guard let str = String(data: data, encoding: .utf8) else {
+                        throw SSHError.genericError("SSH failed to create string using UTF8 encoding for stderr")
+                    }
+                    stderr(str)
+                case .done:
+                    stderrDataLeft = false
+                case .eagain:
+                    break
+                case .error(let error):
+                    throw error
+                }
+            }
+        }
+
+        try channel.close()
+
         return channel.exitStatus()
     }
 
