@@ -68,6 +68,11 @@ class Channel {
         let result = libssh2_channel_read_ex(cChannel, 0, &readBuffer, Channel.readBufferSize)
         return ReadWriteProcessor.processRead(result: result, buffer: &readBuffer, session: cSession)
     }
+
+    func readStderrData() -> ReadWriteProcessor.ReadResult {
+        let result = libssh2_channel_read_ex(cChannel, SSH_EXTENDED_DATA_STDERR, &readBuffer, Channel.readBufferSize)
+        return ReadWriteProcessor.processRead(result: result, buffer: &readBuffer, session: cSession)
+    }
     
     func write(data: Data, length: Int, to stream: Int32 = 0) -> ReadWriteProcessor.WriteResult {
         let result: Result<Int, SSHError> = data.withUnsafeBytes {
