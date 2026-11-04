@@ -84,8 +84,28 @@ public class Session {
         return newAgent
     }
 
+    /// The timeout last passed to `setTimeout` (0 = none). libssh2 only enforces its own
+    /// timeout in blocking mode, so non-blocking loops must enforce it themselves.
+    private(set) var timeoutMilliseconds = 0
+
     public func setTimeout(milliseconds: Int) {
+        timeoutMilliseconds = milliseconds
         libssh2_session_set_timeout(cSession, milliseconds)
+    }
+
+    /// Waits until the socket is ready in the direction libssh2 is blocked on (or `maxWaitMilliseconds` elapses).
+    func waitForSocket(_ socketfd: Int32, maxWaitMilliseconds: Int32) {
+        let directions = libssh2_session_block_directions(cSession)
+        var events: Int16 = 0
+        if directions & LIBSSH2_SESSION_BLOCK_INBOUND != 0 { events |= Int16(POLLIN) }
+        if directions & LIBSSH2_SESSION_BLOCK_OUTBOUND != 0 { events |= Int16(POLLOUT) }
+        if events == 0 { events = Int16(POLLIN) }
+        var descriptor = pollfd(fd: socketfd, events: events, revents: 0)
+        _ = poll(&descriptor, 1, maxWaitMilliseconds)
+    }
+
+    func timeoutError() -> SSHError {
+        return SSHError.codeError(code: LIBSSH2_ERROR_TIMEOUT, session: cSession)
     }
 
     deinit {
