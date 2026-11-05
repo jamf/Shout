@@ -202,7 +202,18 @@ public class SSH {
         var stdoutDataLeft = true
         var stderrDataLeft = true
 
+        // Both streams share one channel window. In blocking mode a read on one stream waits for
+        // data on that stream only, so a command that fills the other stream's buffer stalls
+        // until the session times out. Read both in non-blocking mode and poll the socket instead.
+        session.blocking = 0
+        defer { session.blocking = 1 }
+
+        let timeoutMilliseconds = session.timeoutMilliseconds
+        var lastProgress = Date()
+
         while stdoutDataLeft || stderrDataLeft {
+            var progressed = false
+
             // Read stdout
             if stdoutDataLeft {
                 switch channel.readData() {
@@ -211,8 +222,10 @@ public class SSH {
                         throw SSHError.genericError("SSH failed to create string using UTF8 encoding")
                     }
                     stdout(str)
+                    progressed = true
                 case .done:
                     stdoutDataLeft = false
+                    progressed = true
                 case .eagain:
                     break
                 case .error(let error):
@@ -228,16 +241,30 @@ public class SSH {
                         throw SSHError.genericError("SSH failed to create string using UTF8 encoding for stderr")
                     }
                     stderr(str)
+                    progressed = true
                 case .done:
                     stderrDataLeft = false
+                    progressed = true
                 case .eagain:
                     break
                 case .error(let error):
                     throw error
                 }
             }
+
+            if progressed {
+                lastProgress = Date()
+            } else if stdoutDataLeft || stderrDataLeft {
+                if timeoutMilliseconds > 0,
+                   Date().timeIntervalSince(lastProgress) * 1000 >= Double(timeoutMilliseconds) {
+                    throw session.timeoutError()
+                }
+                // Short cap: libssh2 may already hold buffered data the socket won't signal.
+                session.waitForSocket(sock.socketfd, maxWaitMilliseconds: 50)
+            }
         }
 
+        session.blocking = 1
         try channel.close()
 
         return channel.exitStatus()
